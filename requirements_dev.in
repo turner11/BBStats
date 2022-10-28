@@ -1,0 +1,8 @@
+-r requirements.txt
+
+pytest
+pytest-xdist
+pytest-sugar
+pytest-cov
+fluentcheck
+flaky

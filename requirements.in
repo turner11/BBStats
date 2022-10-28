@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+gsheetsdb
+cachetools
+coloredlogs
+#bokeh
+#xlrd
+#openpyxl
+#altair
