@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import re
+from collections import defaultdict
 from io import StringIO
 from pathlib import Path
 import numpy as np
@@ -11,6 +12,9 @@ import gsheetsdb
 import cachetools.func
 from datetime import datetime, timedelta
 from datetime import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 now = datetime.now()
 # Create a connection object.
@@ -23,9 +27,10 @@ renames = {'time_left': 'time',
            'points_against': 'opponent'}
 
 
-@cachetools.func.ttl_cache(maxsize=10, ttl=10)
-def run_query(query) -> pd.DataFrame:
-    cursor = conn.execute(query, headers=1)
+@cachetools.func.ttl_cache(maxsize=10, ttl=15)
+def get_sheets_data(sheets_url, headers=1) -> pd.DataFrame:
+    query = f'SELECT * FROM "{sheets_url}"'
+    cursor = conn.execute(query, headers=headers)
     df = pd.DataFrame(cursor.fetchall())
     return df.copy()
 
@@ -35,7 +40,7 @@ def _resolve_path_arg(data_arg):
     if isinstance(data_arg, str):
         if data_arg.lower().startswith('http'):
             # noinspection PyCallingNonCallable
-            path_arg = run_query(f'SELECT * FROM "{data_arg}"')
+            path_arg = get_sheets_data(data_arg)
         elif Path(data_arg).exists():
             path_arg = data_arg
         else:
@@ -219,7 +224,8 @@ def get_stats_from_raw_data(df, group_size):
     df_stats = pd.concat(dfs).reset_index(drop=True)
 
     elapsed_minutes = df_stats.elapsed
-    df_stats['played'] = get_friendly_time(elapsed_minutes)
+    elapsed_seconds = elapsed_minutes * 60
+    df_stats['played'] = get_friendly_time(elapsed_seconds)
     df_stats['score_pm'] = df_stats.score_diff / elapsed_minutes
     df_stats['offense_pm'] = df_stats.offense_diff / elapsed_minutes
     df_stats['defence_pm'] = df_stats.defence_diff / elapsed_minutes
@@ -233,3 +239,18 @@ def get_stats_from_raw_data(df, group_size):
     mid_clos = sorted(mid_clos, key=lambda c: c)
     cols = leading_cols + mid_clos + last_cols
     return df_stats[cols].sort_values('score_pm', ascending=False).copy()
+
+
+# noinspection PyCallingNonCallable
+# @cachetools.func.ttl_cache(maxsize=10, ttl=60*5)
+def get_player_images(players_url) -> defaultdict:
+    no_image = 'https://media.istockphoto.com/vectors/basketball-player-standing-and-holding-ball-vector-silhouette-vector-id1299295749?k=20&m=1299295749&s=170667a&w=0&h=D8t1TTfMp_E-W7Vn-HBqRqpfsbCb4QxuR5lthFBq0fs='
+    images = defaultdict(lambda: no_image)
+    try:
+        df = get_sheets_data(players_url)
+        df['image'] = df.image.fillna(no_image)
+        players_images = df.set_index('player').image.to_dict()
+        images.update(players_images)
+    except Exception:
+        logger.exception('Failed to get player images')
+    return images
