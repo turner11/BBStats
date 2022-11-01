@@ -104,7 +104,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
         raise TypeError(f'Cannot parse data of type {type(path_arg).__name__}')
 
     df = df[[c for c in df.columns if 'unnamed' not in c.lower()]]
-    space_renames = {c: c.replace(' ', '_').replace('#', 'player').lower() for c in df.columns}
+    space_renames = {c: c.replace(' ', '_').replace('#', 'player_').lower() for c in df.columns}
     df: pd.DataFrame = df.rename(columns=space_renames)
 
     df.rename(columns={d: d.strip() for d in df.columns})
