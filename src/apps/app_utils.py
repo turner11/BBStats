@@ -79,7 +79,7 @@ def _enrich_data(df_raw, minutes_in_quarter=DEFAULT_MINUTES_IN_QUARTER):
     df['game_time_left'] = minutes_left_in_game
 
     # Elapsed
-    elapsed = df.game_time_left.shift() - df.game_time_left
+    elapsed = df.game_time_left - df.game_time_left.shift(-1)
     df['elapsed'] = elapsed.fillna(0)
 
     # Score diff
@@ -135,17 +135,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
     df.loc[0, ['team']] = df.loc[0, ['team']].fillna(0)
     df.loc[0, ['opponent']] = df.loc[0, ['opponent']].fillna(0)
 
-    total_seconds = df.time.dt.total_seconds()
-    minutes = (total_seconds / 60).astype(int)
-    seconds = (total_seconds - minutes * 60).astype(int)
-
-    str_minutes = minutes.astype(str)
-    str_seconds = seconds.astype(str)
-
-    str_minutes, str_seconds = [s.str.pad(2, side='left', fillchar='0') for s in (str_minutes, str_seconds)]
-
-    friendly_time = str_minutes + ':' + str_seconds
-    df['friendly_time'] = friendly_time
+    df['friendly_time'] = get_friendly_time(df.time)
     df['quarter'] = df.quarter.astype(int)
 
     df['team'] = df.team.astype(int)
@@ -156,6 +146,26 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
             df[col] = df[col].astype(int)
 
     return df.reset_index(drop=True).copy()
+
+
+def get_friendly_time(time_series: pd.Series) -> pd.Series:
+    """
+    Gets the string representation of time
+    :param time_series: a series of  time delta / floats that represents seconds
+    :return: a series with the string representation of time input
+    """
+    try:
+        total_seconds = time_series.dt.total_seconds()
+    except AttributeError:
+        total_seconds = time_series
+
+    minutes = (total_seconds / 60).astype(int)
+    seconds = (total_seconds - minutes * 60).astype(int)
+    str_minutes = minutes.astype(str)
+    str_seconds = seconds.astype(str)
+    str_minutes, str_seconds = [s.str.pad(2, side='left', fillchar='0') for s in (str_minutes, str_seconds)]
+    friendly_time = str_minutes + ':' + str_seconds
+    return friendly_time
 
 
 def get_time(raw_hour):
@@ -189,13 +199,12 @@ def get_time(raw_hour):
 def get_stats_from_raw_data(df, group_size):
     combinations_by_snapshot = df.players.apply(lambda lu: tuple(itertools.combinations(lu, group_size))).values
     played_groups = set(itertools.chain.from_iterable(combinations_by_snapshot))
+
     dfs = []
     for line_up in played_groups:
         line_up = set(line_up)
         indices = df.players.apply(lambda ps: set(ps).intersection(line_up) == line_up)
-        # line_up
-        # indices
-        sum_cols =[c for c in df.columns if c.endswith('diff')]
+        sum_cols = [c for c in df.columns if c.endswith('diff')] + ['elapsed']
 
         df_group = df[indices].agg({c: sum for c in sum_cols})
         try:
@@ -207,6 +216,20 @@ def get_stats_from_raw_data(df, group_size):
         df_group = df_group.assign(players=[sorted(line_up)])
         dfs.append(df_group)
 
-    df_stats = pd.concat(dfs).sort_values('score_diff', ascending=False)
-    cols = sorted(df_stats.columns, key=lambda c: c!= 'score_diff')
-    return df_stats[cols].copy()
+    df_stats = pd.concat(dfs).reset_index(drop=True)
+
+    elapsed_minutes = df_stats.elapsed
+    df_stats['played'] = get_friendly_time(elapsed_minutes)
+    df_stats['score_pm'] = df_stats.score_diff / elapsed_minutes
+    df_stats['offense_pm'] = df_stats.offense_diff / elapsed_minutes
+    df_stats['defence_pm'] = df_stats.defence_diff / elapsed_minutes
+
+    types = {c: t for c, t in df.dtypes.items() if c in df_stats.columns}
+    df_stats = df_stats.astype(types)
+
+    leading_cols = ['score_diff', 'score_pm']
+    last_cols = ['players', 'elapsed']
+    mid_clos = [c for c in df_stats.columns if c not in leading_cols and c not in last_cols]
+    mid_clos = sorted(mid_clos, key=lambda c: c)
+    cols = leading_cols + mid_clos + last_cols
+    return df_stats[cols].sort_values('score_pm', ascending=False).copy()
