@@ -148,8 +148,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
 
     for col in df.columns:
         if col.startswith('player_'):
-            df[col] = df[col].astype(int)
-
+            df[col] = df[col].ffill().fillna(-1).astype(int)
     return df.reset_index(drop=True).copy()
 
 
