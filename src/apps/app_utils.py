@@ -122,7 +122,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
     # Add record for each quarter start
     dfs_q = []
     for quarter, dfq in df.groupby('quarter'):
-        min_time_idx = dfq.time.idxmin()
+        min_time_idx = dfq.time.idxmax()
         first_record = dfq.loc[min_time_idx]
         first_record_time = first_record.time.to_pytimedelta().total_seconds()
         if first_record_time != minutes_in_quarter * 60:
@@ -148,8 +148,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
 
     for col in df.columns:
         if col.startswith('player_'):
-            df[col] = df[col].astype(int)
-
+            df[col] = df[col].ffill().fillna(-1).astype(int)
     return df.reset_index(drop=True).copy()
 
 
@@ -242,15 +241,8 @@ def get_stats_from_raw_data(df, group_size):
 
 
 # noinspection PyCallingNonCallable
-# @cachetools.func.ttl_cache(maxsize=10, ttl=60*5)
-def get_player_images(players_url) -> defaultdict:
-    no_image = 'https://media.istockphoto.com/vectors/basketball-player-standing-and-holding-ball-vector-silhouette-vector-id1299295749?k=20&m=1299295749&s=170667a&w=0&h=D8t1TTfMp_E-W7Vn-HBqRqpfsbCb4QxuR5lthFBq0fs='
-    images = defaultdict(lambda: no_image)
-    try:
-        df = get_sheets_data(players_url)
-        df['image'] = df.image.fillna(no_image)
-        players_images = df.set_index('player').image.to_dict()
-        images.update(players_images)
-    except Exception:
-        logger.exception('Failed to get player images')
-    return images
+@cachetools.func.ttl_cache(maxsize=10, ttl=60 * 5)
+def get_player_images(players_url) -> dict:
+    df = get_sheets_data(players_url)
+    players_images = df.set_index('player').image.dropna().to_dict()
+    return players_images
