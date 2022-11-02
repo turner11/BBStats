@@ -122,7 +122,7 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
     # Add record for each quarter start
     dfs_q = []
     for quarter, dfq in df.groupby('quarter'):
-        min_time_idx = dfq.time.idxmin()
+        min_time_idx = dfq.time.idxmax()
         first_record = dfq.loc[min_time_idx]
         first_record_time = first_record.time.to_pytimedelta().total_seconds()
         if first_record_time != minutes_in_quarter * 60:
