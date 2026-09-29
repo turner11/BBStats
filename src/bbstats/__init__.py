@@ -2,23 +2,15 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections import defaultdict
 from io import StringIO
 from pathlib import Path
 import numpy as np
 
 import pandas as pd
-import gsheetsdb
-import cachetools.func
-from datetime import datetime, timedelta
+import urllib.request
+from datetime import timedelta
 from datetime import time
-import logging
 
-logger = logging.getLogger(__name__)
-
-now = datetime.now()
-# Create a connection object.
-conn = gsheetsdb.connect()
 
 DEFAULT_MINUTES_IN_QUARTER = 10.0
 
@@ -27,28 +19,32 @@ renames = {'time_left': 'time',
            'points_against': 'opponent'}
 
 
-@cachetools.func.ttl_cache(maxsize=10, ttl=15)
-def get_sheets_data(sheets_url, headers=1) -> pd.DataFrame:
-    query = f'SELECT * FROM "{sheets_url}"'
-    cursor = conn.execute(query, headers=headers)
-    df = pd.DataFrame(cursor.fetchall())
-    return df.copy()
+SORTS = {'top': ('score_pm', False), 'offense': ('offense_pm', False), 'defense': ('defence_pm', True)}
+
+
+def to_csv_url(url: str) -> str:
+    """Google Sheets share URL -> CSV export URL (needs 'anyone with the link'). Other URLs pass through."""
+    m = re.match(r'(https://docs\.google\.com/spreadsheets/d/[^/?#]+)', url)
+    if not m:
+        return url
+    gid = re.search(r'gid=(\d+)', url)
+    return f'{m.group(1)}/export?format=csv' + (f'&gid={gid.group(1)}' if gid else '')
+
+
+def fetch_csv(url: str, timeout=15) -> str:
+    with urllib.request.urlopen(to_csv_url(url), timeout=timeout) as resp:
+        return resp.read().decode('utf-8')
 
 
 def _resolve_path_arg(data_arg):
-    path_arg = data_arg
-    if isinstance(data_arg, str):
-        if data_arg.lower().startswith('http'):
-            # noinspection PyCallingNonCallable
-            path_arg = get_sheets_data(data_arg)
-        elif Path(data_arg).exists():
-            path_arg = data_arg
-        else:
-            # noinspection PyTypeChecker
-            df = pd.read_csv(StringIO(path_arg.strip()), )
-            path_arg = df
-
-    return path_arg
+    if not isinstance(data_arg, str):
+        return data_arg
+    s = data_arg.strip()
+    if '\n' in s:
+        return pd.read_csv(StringIO(s))
+    if s.lower().startswith('http'):
+        return pd.read_csv(StringIO(fetch_csv(s)))
+    return s if Path(s).exists() else pd.read_csv(StringIO(s))
 
 
 def get_snapshots_df(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAULT_MINUTES_IN_QUARTER):
@@ -140,6 +136,8 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
     df.loc[0, ['team']] = df.loc[0, ['team']].fillna(0)
     df.loc[0, ['opponent']] = df.loc[0, ['opponent']].fillna(0)
 
+    df['time'] = pd.to_timedelta(df.time)
+    df['auto_added'] = df.auto_added.astype(bool)
     df['friendly_time'] = get_friendly_time(df.time)
     df['quarter'] = df.quarter.astype(int)
 
@@ -200,49 +198,30 @@ def get_time(raw_hour):
     return out_date
 
 
-def get_stats_from_raw_data(df, group_size):
+def get_stats_from_raw_data(df, group_size, sort='top'):
+    """Lineup stats over snapshots. Needs columns: players, elapsed, offense_diff, defence_diff."""
+    if sort not in SORTS:
+        raise ValueError(f'Unknown sort {sort!r}, expected one of {list(SORTS)}')
+    col, ascending = SORTS[sort]
+    sum_cols = ['offense_diff', 'defence_diff', 'elapsed']
     combinations_by_snapshot = df.players.apply(lambda lu: tuple(itertools.combinations(lu, group_size))).values
     played_groups = set(itertools.chain.from_iterable(combinations_by_snapshot))
 
-    dfs = []
+    rows = []
     for line_up in played_groups:
         line_up = set(line_up)
         indices = df.players.apply(lambda ps: set(ps).intersection(line_up) == line_up)
-        sum_cols = [c for c in df.columns if c.endswith('diff')] + ['elapsed']
+        totals = df[indices][sum_cols].sum()
+        if totals.elapsed > 0:
+            rows.append({**totals.to_dict(), 'players': sorted(line_up)})
 
-        df_group = df[indices].agg({c: sum for c in sum_cols})
-        try:
-            # series
-            df_group = df_group.to_frame().T
-        except AttributeError:
-            # data frame
-            pass
-        df_group = df_group.assign(players=[sorted(line_up)])
-        dfs.append(df_group)
-
-    df_stats = pd.concat(dfs).reset_index(drop=True)
-
-    elapsed_minutes = df_stats.elapsed
-    elapsed_seconds = elapsed_minutes * 60
-    df_stats['played'] = get_friendly_time(elapsed_seconds)
-    df_stats['score_pm'] = df_stats.score_diff / elapsed_minutes
-    df_stats['offense_pm'] = df_stats.offense_diff / elapsed_minutes
-    df_stats['defence_pm'] = df_stats.defence_diff / elapsed_minutes
-
-    types = {c: t for c, t in df.dtypes.items() if c in df_stats.columns}
-    df_stats = df_stats.astype(types)
+    df_stats = pd.DataFrame(rows, columns=sum_cols + ['players'])
+    df_stats['score_diff'] = df_stats.offense_diff - df_stats.defence_diff
+    df_stats['played'] = get_friendly_time(df_stats.elapsed * 60)
+    for name, diff in (('score_pm', 'score_diff'), ('offense_pm', 'offense_diff'), ('defence_pm', 'defence_diff')):
+        df_stats[name] = df_stats[diff] / df_stats.elapsed
 
     leading_cols = ['score_diff', 'score_pm']
     last_cols = ['players', 'elapsed']
-    mid_clos = [c for c in df_stats.columns if c not in leading_cols and c not in last_cols]
-    mid_clos = sorted(mid_clos, key=lambda c: c)
-    cols = leading_cols + mid_clos + last_cols
-    return df_stats[cols].sort_values('score_pm', ascending=False).copy()
-
-
-# noinspection PyCallingNonCallable
-@cachetools.func.ttl_cache(maxsize=10, ttl=60 * 5)
-def get_player_images(players_url) -> dict:
-    df = get_sheets_data(players_url)
-    players_images = df.set_index('player').image.dropna().to_dict()
-    return players_images
+    mid_cols = sorted(c for c in df_stats.columns if c not in leading_cols + last_cols)
+    return df_stats[leading_cols + mid_cols + last_cols].sort_values(col, ascending=ascending).reset_index(drop=True)

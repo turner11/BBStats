@@ -1,11 +1,1 @@
-streamlit
-Pillow
-pandas
-numpy
-gsheetsdb
-cachetools
-coloredlogs
-#bokeh
-#xlrd
-#openpyxl
-#altair
+-e .[app]
