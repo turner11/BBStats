@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["pandas", "numpy"]
 
 [project.optional-dependencies]
-app = ["streamlit>=1.40", "Pillow"]
+app = ["streamlit>=1.40"]
 dev = ["pytest"]
 
 [build-system]
