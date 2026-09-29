@@ -2,3 +2,5 @@
 **/.idea/
 **/.streamlit/
 **/__pycache__/**
+
+*.egg-info/

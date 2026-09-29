@@ -1,7 +1,12 @@
-import pytest
-from fluentcheck import Check
+import math
+import subprocess
+import sys
 
-from apps import app_utils
+import pandas as pd
+import pytest
+
+import bbstats
+from bbstats import get_snapshots_df, get_stats_from_raw_data, to_csv_url
 
 CSV_3_SNAPSHOTS = '''
 #1,#2,#3,#4,#5,Points,Points Against,Quarter,Time Left
@@ -10,21 +15,60 @@ CSV_3_SNAPSHOTS = '''
 1, 2, 3, 4, 7, 2, 3, 4, 0:00
 '''
 
-
 google_sheets_url = "https://docs.google.com/spreadsheets/d/1xvlTs0ry_f-jg3iRM2wdiwM7v1YMiRC7oJwI6MDGpuU/edit?usp=sharing"
 
 
-@pytest.mark.parametrize('data, expected_count',
-                         [
-                             (google_sheets_url, None),
-                             (CSV_3_SNAPSHOTS, 3),
-                         ],
-                         ids=['google sheets', '3 records csv'], )
-def test_parse_data(data, expected_count):
-    df = app_utils.get_snapshots_df(data)
-    df_raw = df[~df.auto_added]
-    if expected_count is not None:
-        Check(df_raw).is_not_none().is_nuple(expected_count)
-    else:
-        Check(df_raw).is_not_none().is_not_empty()
+def test_parse_data():
+    df = get_snapshots_df(CSV_3_SNAPSHOTS)
+    assert len(df[~df.auto_added]) == 3
 
+
+@pytest.mark.network
+def test_parse_data_google_sheets():
+    df = get_snapshots_df(google_sheets_url)
+    assert not df[~df.auto_added].empty
+    assert df.game_time_left.max() > 0
+
+
+def test_to_csv_url():
+    base = "https://docs.google.com/spreadsheets/d/ABC"
+    assert to_csv_url(f"{base}/edit?usp=sharing#gid=123") == f"{base}/export?format=csv&gid=123"
+    assert to_csv_url(f"{base}/edit?usp=sharing") == f"{base}/export?format=csv"
+    # fragment gid wins over the query gid (players tab appended to a data-tab share link)
+    assert to_csv_url(f"{base}/edit?gid=0#gid=77") == f"{base}/export?format=csv&gid=77"
+    assert to_csv_url("https://example.com/x.csv") == "https://example.com/x.csv"
+
+
+@pytest.mark.parametrize("size", [1, 2, 3, 4, 5])
+def test_stats_group_sizes(size):
+    df = get_stats_from_raw_data(get_snapshots_df(CSV_3_SNAPSHOTS), size)
+    assert not df.empty
+    assert all(len(p) == size for p in df.players)
+    assert (df.elapsed > 0).all()
+    assert all(math.isfinite(v) for v in df.score_pm)
+
+
+def test_stats_sort_modes():
+    snaps = get_snapshots_df(CSV_3_SNAPSHOTS)
+    d = get_stats_from_raw_data(snaps, 1, 'defense').defence_pm.tolist()
+    assert d == sorted(d)
+    o = get_stats_from_raw_data(snaps, 1, 'offense').offense_pm.tolist()
+    assert o == sorted(o, reverse=True)
+    t = get_stats_from_raw_data(snaps, 1, 'top').score_pm.tolist()
+    assert t == sorted(t, reverse=True)
+    with pytest.raises(ValueError):
+        get_stats_from_raw_data(snaps, 1, 'bogus')
+
+
+def test_stats_needs_only_snapshot_columns():
+    cols = ['players', 'elapsed', 'offense_diff', 'defence_diff']
+    df = pd.DataFrame([([1, 2], 2.0, 4, 2), ([1, 3], 1.0, 0, 3)], columns=cols)
+    out = get_stats_from_raw_data(df, 1)
+    row = out[out.players.apply(lambda p: p == [1])].iloc[0]
+    assert row.score_diff == 4 - 2 + 0 - 3 and row.elapsed == 3
+    assert get_stats_from_raw_data(pd.DataFrame(columns=cols), 2).empty
+
+
+def test_import_has_no_side_effects():
+    code = "import bbstats, sys; assert 'streamlit' not in sys.modules"
+    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
