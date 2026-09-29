@@ -34,6 +34,8 @@ def test_to_csv_url():
     base = "https://docs.google.com/spreadsheets/d/ABC"
     assert to_csv_url(f"{base}/edit?usp=sharing#gid=123") == f"{base}/export?format=csv&gid=123"
     assert to_csv_url(f"{base}/edit?usp=sharing") == f"{base}/export?format=csv"
+    # fragment gid wins over the query gid (players tab appended to a data-tab share link)
+    assert to_csv_url(f"{base}/edit?gid=0#gid=77") == f"{base}/export?format=csv&gid=77"
     assert to_csv_url("https://example.com/x.csv") == "https://example.com/x.csv"
 
 

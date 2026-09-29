@@ -27,8 +27,8 @@ def to_csv_url(url: str) -> str:
     m = re.match(r'(https://docs\.google\.com/spreadsheets/d/[^/?#]+)', url)
     if not m:
         return url
-    gid = re.search(r'gid=(\d+)', url)
-    return f'{m.group(1)}/export?format=csv' + (f'&gid={gid.group(1)}' if gid else '')
+    gids = re.findall(r'gid=(\d+)', url)  # last one: the #gid fragment names the tab
+    return f'{m.group(1)}/export?format=csv' + (f'&gid={gids[-1]}' if gids else '')
 
 
 def fetch_csv(url: str, timeout=15) -> str:
