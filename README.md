@@ -7,7 +7,9 @@ Basketball lineup +/- stats from a per-snapshot Google Sheet. `bbstats` is an im
     pytest                    # or: pytest -m "not network"
 
 Query params for the app: `data` (sheet URL), `players` (gid of a `player,image` tab), and `team_api` (a URL returning
-the gush-ball players JSON, e.g. `https://<site>/api/teams/<id>/players`; wins over `players`).
+a JSON list of `{jersey_number, name, images: [{url}]}`, e.g. gush-ball's `https://<site>/api/teams/<id>/players`;
+feeds the name and photo per jersey; wins over `players`). Optional `return_url` (http/https only, anything else is
+ignored) shows a "Back to the game" link.
 
 ```python
 from bbstats import get_snapshots_df, get_stats_from_raw_data
