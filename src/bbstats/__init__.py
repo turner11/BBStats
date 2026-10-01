@@ -31,6 +31,12 @@ def to_csv_url(url: str) -> str:
     return f'{m.group(1)}/export?format=csv' + (f'&gid={gids[-1]}' if gids else '')
 
 
+def images_by_jersey(players: list[dict]) -> dict[int, str]:
+    """gush-ball `GET /api/teams/{id}/players` rows -> {jersey_number: first image url}; skips players lacking either."""
+    return {p['jersey_number']: p['images'][0]['url']
+            for p in players if p.get('jersey_number') is not None and p.get('images')}
+
+
 def fetch_csv(url: str, timeout=15) -> str:
     with urllib.request.urlopen(to_csv_url(url), timeout=timeout) as resp:
         return resp.read().decode('utf-8')

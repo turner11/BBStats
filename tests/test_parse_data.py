@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import bbstats
-from bbstats import get_snapshots_df, get_stats_from_raw_data, to_csv_url
+from bbstats import get_snapshots_df, get_stats_from_raw_data, images_by_jersey, to_csv_url
 
 CSV_3_SNAPSHOTS = '''
 #1,#2,#3,#4,#5,Points,Points Against,Quarter,Time Left
@@ -37,6 +37,16 @@ def test_to_csv_url():
     # fragment gid wins over the query gid (players tab appended to a data-tab share link)
     assert to_csv_url(f"{base}/edit?gid=0#gid=77") == f"{base}/export?format=csv&gid=77"
     assert to_csv_url("https://example.com/x.csv") == "https://example.com/x.csv"
+
+
+def test_images_by_jersey():
+    players = [
+        {"jersey_number": 7, "images": [{"url": "a"}, {"url": "b"}]},  # first image wins
+        {"jersey_number": None, "images": [{"url": "c"}]},  # no number
+        {"jersey_number": 9, "images": []},  # no images
+        {"jersey_number": 0, "images": [{"url": "z"}]},  # 0 is a real jersey
+    ]
+    assert images_by_jersey(players) == {7: "a", 0: "z"}
 
 
 @pytest.mark.parametrize("size", [1, 2, 3, 4, 5])
