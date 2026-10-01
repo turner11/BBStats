@@ -1,4 +1,5 @@
 import math
+from io import StringIO
 import subprocess
 import sys
 
@@ -6,7 +7,7 @@ import pandas as pd
 import pytest
 
 import bbstats
-from bbstats import get_snapshots_df, get_stats_from_raw_data, images_by_jersey, to_csv_url
+from bbstats import get_snapshots_df, get_stats_from_raw_data, http_url_or_none, players_by_jersey, to_csv_url
 
 CSV_3_SNAPSHOTS = '''
 #1,#2,#3,#4,#5,Points,Points Against,Quarter,Time Left
@@ -39,14 +40,49 @@ def test_to_csv_url():
     assert to_csv_url("https://example.com/x.csv") == "https://example.com/x.csv"
 
 
-def test_images_by_jersey():
+def test_players_by_jersey():
     players = [
-        {"jersey_number": 7, "images": [{"url": "a"}, {"url": "b"}]},  # first image wins
-        {"jersey_number": None, "images": [{"url": "c"}]},  # no number
-        {"jersey_number": 9, "images": []},  # no images
-        {"jersey_number": 0, "images": [{"url": "z"}]},  # 0 is a real jersey
+        {"jersey_number": 7, "name": "Avi", "images": [{"url": "a"}, {"url": "b"}]},  # first image wins
+        {"jersey_number": None, "name": "No number", "images": [{"url": "c"}]},  # no number
+        {"jersey_number": 9, "name": "Dan", "images": []},  # no images
+        {"jersey_number": 0, "name": "", "images": [{"url": "z"}]},  # 0 is a real jersey; empty name
+        {"jersey_number": 5, "images": []},  # missing name
     ]
-    assert images_by_jersey(players) == {7: "a", 0: "z"}
+    assert players_by_jersey(players) == {
+        7: {"name": "Avi", "image": "a"},
+        9: {"name": "Dan", "image": None},
+        0: {"name": None, "image": "z"},
+        5: {"name": None, "image": None},
+    }
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("https://x.co/g/1", "https://x.co/g/1"),
+    ("HTTP://x.co", "http://x.co"),
+    ("  https://x.co ", "https://x.co"),
+    ("javascript:alert(1)", None),
+    ("JaVaScRiPt:alert(1)", None),
+    ("java\tscript:alert(1)", None),
+    ("data:text/html,x", None),
+    ("/games/1", None),
+    ("https://", None),
+    ("", None),
+    (None, None),
+])
+def test_http_url_or_none(url, expected):
+    assert http_url_or_none(url) == expected
+
+
+HEADERS = "#1,#2,#3,#4,#5,Points,Points Against,Quarter,Time Left\n"
+
+
+@pytest.mark.parametrize("arg", [
+    HEADERS,
+    HEADERS + ",,,,,,,,\n,,,,,,,,\n",
+    pd.read_csv(StringIO(HEADERS)),
+])
+def test_empty_sheet_loads(arg):
+    assert get_snapshots_df(arg).empty
 
 
 @pytest.mark.parametrize("size", [1, 2, 3, 4, 5])
