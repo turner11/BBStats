@@ -85,7 +85,7 @@ sort = st.segmented_control('Sort', list(SORTS), default='top') or 'top'
 
 try:
     snapshots = load_snapshots(url, minutes)
-except Exception as ex:
+except Exception as ex:  # noqa: BLE001 - any load failure gets the same actionable message
     st.error("Couldn't read the sheet. Make sure it's shared as 'Anyone with the link can view'.")
     st.caption(f'Details: {ex}')
     st.stop()
