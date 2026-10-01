@@ -1,9 +1,11 @@
+import json
+import urllib.request
 from urllib.parse import urldefrag
 
 import pandas as pd
 import streamlit as st
 
-from bbstats import SORTS, get_snapshots_df, get_stats_from_raw_data, to_csv_url
+from bbstats import SORTS, get_snapshots_df, get_stats_from_raw_data, images_by_jersey, to_csv_url
 
 st.set_page_config(layout='wide', page_icon='🏀', page_title='BBStats')
 
@@ -16,6 +18,12 @@ def load_snapshots(url, minutes):
 @st.cache_data(ttl=300)
 def load_images(players_url):
     return pd.read_csv(to_csv_url(players_url)).set_index('player').image.dropna().to_dict()
+
+
+@st.cache_data(ttl=300)
+def load_team_images(api_url):
+    with urllib.request.urlopen(api_url, timeout=15) as resp:
+        return images_by_jersey(json.load(resp))
 
 
 def secret(key):
@@ -43,11 +51,15 @@ st.dataframe(
     column_config={c: st.column_config.NumberColumn(format='%.2f') for c in ('score_pm', 'offense_pm', 'defence_pm')},
 )
 
+team_api = qp.get('team_api')  # wins over the sheet tab
 players_sheet = qp.get('players') or secret('players_sheet_id')
 images = {}
-if players_sheet:
+if team_api or players_sheet:
     try:
-        images = load_images(f'{urldefrag(url)[0]}#gid={players_sheet}')
+        if team_api:
+            images = load_team_images(team_api)
+        else:
+            images = load_images(f'{urldefrag(url)[0]}#gid={players_sheet}')
     except Exception as ex:
         st.warning(f'Failed to get player images: {ex}')
 

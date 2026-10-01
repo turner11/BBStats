@@ -6,6 +6,9 @@ Basketball lineup +/- stats from a per-snapshot Google Sheet. `bbstats` is an im
     streamlit run src/apps/stats.py
     pytest                    # or: pytest -m "not network"
 
+Query params for the app: `data` (sheet URL), `players` (gid of a `player,image` tab), and `team_api` (a URL returning
+the gush-ball players JSON, e.g. `https://<site>/api/teams/<id>/players`; wins over `players`).
+
 ```python
 from bbstats import get_snapshots_df, get_stats_from_raw_data
 
