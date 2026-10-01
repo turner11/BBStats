@@ -18,7 +18,7 @@ CSS = '''<style>
 .lineup-cards .num { font-weight: 700; font-size: .8rem; margin-top: .25rem; }
 .lineup-cards .name { font-size: .75rem; overflow-wrap: anywhere; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-[data-testid="stMain"] button { min-height: 2.75rem; }
+[data-testid="stMain"] button, [data-testid="stMain"] a[data-testid^="stBaseLinkButton"] { min-height: 2.75rem; }
 </style>'''
 
 
@@ -87,7 +87,7 @@ try:
     snapshots = load_snapshots(url, minutes)
 except Exception as ex:  # noqa: BLE001 - any load failure gets the same actionable message
     st.error("Couldn't read the sheet. Make sure it's shared as 'Anyone with the link can view'.")
-    st.caption(f'Details: {ex}')
+    st.text(f'Details: {ex}')
     st.stop()
 
 if snapshots.empty:
@@ -99,7 +99,7 @@ if df_stats.empty:
     st.info('No lineup has played time yet. Tap Refresh after the next snapshot.')
     st.stop()
 
-team_api = qp.get('team_api')  # wins over the sheet tab
+team_api = http_url_or_none(qp.get('team_api'))  # wins over the sheet tab
 players_sheet = qp.get('players') or secret('players_sheet_id')
 roster = {}
 if team_api or players_sheet:
