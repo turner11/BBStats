@@ -8,6 +8,7 @@ import numpy as np
 
 import pandas as pd
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import timedelta
 from datetime import time
 
@@ -31,10 +32,16 @@ def to_csv_url(url: str) -> str:
     return f'{m.group(1)}/export?format=csv' + (f'&gid={gids[-1]}' if gids else '')
 
 
-def images_by_jersey(players: list[dict]) -> dict[int, str]:
-    """gush-ball `GET /api/teams/{id}/players` rows -> {jersey_number: first image url}; skips players lacking either."""
-    return {p['jersey_number']: p['images'][0]['url']
-            for p in players if p.get('jersey_number') is not None and p.get('images')}
+def http_url_or_none(url: str | None) -> str | None:
+    """The url if it is http(s) with a host, else None. Guards links/images built from untrusted input."""
+    parts = urlsplit((url or '').strip())
+    return parts.geturl() if parts.scheme in ('http', 'https') and parts.netloc else None
+
+
+def players_by_jersey(players: list[dict]) -> dict[int, dict]:
+    """gush-ball `GET /api/teams/{id}/players` rows -> {jersey_number: {'name', 'image'}} (first image; None if absent)."""
+    return {p['jersey_number']: {'name': p.get('name') or None, 'image': (p.get('images') or [{}])[0].get('url')}
+            for p in players if p.get('jersey_number') is not None}
 
 
 def fetch_csv(url: str, timeout=15) -> str:
@@ -118,6 +125,8 @@ def _load_raw_data(path_arg: str | Path | pd.DataFrame, minutes_in_quarter=DEFAU
     df.infer_objects()
     df = df.rename(columns=renames)
     df = df.dropna(subset=['time'], how='all')
+    if df.empty:  # headers-only / blank-row sheet, normal before tip-off
+        return df.reset_index(drop=True)
     df['time'] = df.time.apply(get_time)
     df['auto_added'] = False
 

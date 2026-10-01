@@ -1,6 +1,6 @@
 **/.env/
 **/.idea/
-**/.streamlit/
+**/.streamlit/secrets.toml
 **/__pycache__/**
 
 *.egg-info/
