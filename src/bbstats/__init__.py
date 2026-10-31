@@ -20,7 +20,9 @@ renames = {'time_left': 'time',
            'points_against': 'opponent'}
 
 
-SORTS = {'top': ('score_pm', False), 'offense': ('offense_pm', False), 'defense': ('defence_pm', True)}
+# sort -> (per-minute column, total column, ascending)
+SORTS = {'top': ('score_pm', 'score_diff', False), 'offense': ('offense_pm', 'offense_diff', False),
+         'defense': ('defence_pm', 'defence_diff', True), 'minutes': ('elapsed', 'elapsed', False)}
 
 
 def to_csv_url(url: str) -> str:
@@ -176,8 +178,8 @@ def get_friendly_time(time_series: pd.Series) -> pd.Series:
     except AttributeError:
         total_seconds = time_series
 
-    minutes = (total_seconds / 60).astype(int)
-    seconds = (total_seconds - minutes * 60).astype(int)
+    whole_seconds = total_seconds.round().astype(int)  # 165.99999999999994 is 02:46, not 02:45
+    minutes, seconds = whole_seconds // 60, whole_seconds % 60
     str_minutes = minutes.astype(str)
     str_seconds = seconds.astype(str)
     str_minutes, str_seconds = [s.str.pad(2, side='left', fillchar='0') for s in (str_minutes, str_seconds)]
@@ -213,15 +215,19 @@ def get_time(raw_hour):
     return out_date
 
 
-def get_stats_from_raw_data(df, group_size, sort='top'):
-    """Lineup stats over snapshots. Needs columns: players, elapsed, offense_diff, defence_diff."""
+def get_stats_from_raw_data(df, group_size, sort='top', per_minute=True, min_minutes=0):
+    """Lineup stats over snapshots. Needs columns: players, elapsed, offense_diff, defence_diff.
+
+    Ranking mirrors GushBall's LineupStats.vue: lineups under `min_minutes` (whole seconds) are dropped, ties on the
+    chosen key keep `top` order, then jersey order, so the result never depends on row order."""
     if sort not in SORTS:
         raise ValueError(f'Unknown sort {sort!r}, expected one of {list(SORTS)}')
-    col, ascending = SORTS[sort]
+    per_minute_col, total_col, ascending = SORTS[sort]
+    col = per_minute_col if per_minute else total_col
     sum_cols = ['offense_diff', 'defence_diff', 'elapsed']
     # sorted: the same players in another column order are one group
     combinations_by_snapshot = df.players.apply(lambda lu: tuple(itertools.combinations(sorted(lu), group_size))).values
-    played_groups = set(itertools.chain.from_iterable(combinations_by_snapshot))
+    played_groups = sorted(set(itertools.chain.from_iterable(combinations_by_snapshot)))
 
     rows = []
     for line_up in played_groups:
@@ -237,7 +243,9 @@ def get_stats_from_raw_data(df, group_size, sort='top'):
     for name, diff in (('score_pm', 'score_diff'), ('offense_pm', 'offense_diff'), ('defence_pm', 'defence_diff')):
         df_stats[name] = df_stats[diff] / df_stats.elapsed
 
+    df_stats = df_stats[(df_stats.elapsed * 60).round() >= min_minutes * 60]
+
     leading_cols = ['score_diff', 'score_pm']
     last_cols = ['players', 'elapsed']
     mid_cols = sorted(c for c in df_stats.columns if c not in leading_cols + last_cols)
-    return df_stats[leading_cols + mid_cols + last_cols].sort_values(col, ascending=ascending).reset_index(drop=True)
+    return df_stats[leading_cols + mid_cols + last_cols].sort_values([col, 'score_pm'], ascending=[ascending, False], kind='stable').reset_index(drop=True)
