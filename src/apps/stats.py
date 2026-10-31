@@ -69,7 +69,8 @@ def lineup_card(rank, row, roster):
     """One lineup: rank, +/-, minutes, the five players, then the per-minute and points stats."""
     diff = int(row.score_diff)
     tone = 'win' if diff > 0 else 'loss' if diff < 0 else ''
-    stats = ((f'{row.score_pm:+.2f}', '+/- per min'), (f'{int(row.offense_diff)} : {int(row.defence_diff)}', 'pts : opp'),
+    stats = ((f'{row.score_pm:+.2f}', '+/- per min'),
+             (f'{int(row.offense_diff)} : {int(row.defence_diff)}', 'pts : opp'),
              (f'{row.offense_pm:.2f}', 'pts per min'), (f'{row.defence_pm:.2f}', 'opp per min'))
     return (f'<div class="lu"><div class="lu-head"><span class="rank">#{rank}</span>'
             f'<span class="diff {tone}">{diff:+d}</span><span class="min">{row.played} min</span></div>'
