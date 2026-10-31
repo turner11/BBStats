@@ -127,3 +127,38 @@ def test_stats_same_players_any_column_order_is_one_lineup(size, groups):
 def test_import_has_no_side_effects():
     code = "import bbstats, sys; assert 'streamlit' not in sys.modules"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+COLS = ['players', 'elapsed', 'offense_diff', 'defence_diff']
+
+
+def test_friendly_time_rounds_float_seconds():
+    got = bbstats.get_friendly_time(pd.Series([165.99999999999994, 25.00000000000007, 75.99999999999994]))
+    assert got.tolist() == ['02:46', '00:25', '01:16']
+
+
+def test_stats_min_minutes_whole_second_threshold():
+    df = pd.DataFrame([([1], 0.99999, 1, 0), ([2], 0.5, 1, 0), ([3], 2.0, 1, 0)], columns=COLS)
+    assert sorted(p[0] for p in get_stats_from_raw_data(df, 1, min_minutes=1).players) == [1, 3]
+    assert len(get_stats_from_raw_data(df, 1, min_minutes=0)) == 3
+
+
+def test_stats_totals_and_minutes_sorts():
+    df = pd.DataFrame([([1], 1.0, 3, 0), ([2], 4.0, 4, 0), ([3], 2.0, 0, 5)], columns=COLS)
+    assert get_stats_from_raw_data(df, 1, per_minute=False).score_diff.tolist() == [4, 3, -5]
+    assert get_stats_from_raw_data(df, 1, 'defense', per_minute=False).defence_diff.tolist() == [5, 0, 0][::-1]
+    assert get_stats_from_raw_data(df, 1, 'minutes').elapsed.tolist() == [4.0, 2.0, 1.0]
+
+
+@pytest.mark.parametrize("per_minute", [True, False])
+@pytest.mark.parametrize("sort", list(bbstats.SORTS))
+def test_stats_order_matches_stable_resort_of_top(sort, per_minute):
+    """GushBall's LineupStats.vue stably re-sorts the API's `top` list; BBStats must rank the same."""
+    df = pd.DataFrame([([1, 2], 1.0, 2, 2), ([3, 4], 1.0, 2, 2), ([5, 6], 2.0, 4, 4), ([7, 8], 1.0, 3, 1),
+                       ([9, 10], 2.0, 1, 3), ([11, 12], 1.0, 0, 0)], columns=COLS)
+    col, total, asc = bbstats.SORTS[sort]
+    col = col if per_minute else total
+    top = get_stats_from_raw_data(df, 1)
+    expected = top.sort_values(col, ascending=asc, kind='stable').players.tolist()
+    assert get_stats_from_raw_data(df, 1, sort, per_minute).players.tolist() == expected
+    assert get_stats_from_raw_data(df.iloc[::-1], 1).players.tolist() == top.players.tolist()

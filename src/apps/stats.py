@@ -100,6 +100,13 @@ qp['data'] = url
 
 size = st.segmented_control('Group size', [1, 2, 3, 4, 5], default=5) or 5
 sort = st.segmented_control('Sort', list(SORTS), default='top') or 'top'
+if sort != 'minutes':
+    per_minute = st.segmented_control('Value', ['per min', 'total'], default='per min') != 'total'
+else:
+    per_minute = True
+min_choice = st.segmented_control('Min time', [0, 1, 2, 5], default=1,
+                                  format_func=lambda m: f'{m:02d}:00' if m else 'All')
+min_minutes = 1 if min_choice is None else min_choice  # 0 ("All") is falsy, so no `or 1`
 
 try:
     snapshots = load_snapshots(url, minutes)
@@ -112,7 +119,10 @@ if snapshots.empty:
     st.info('No snapshots yet: stats appear after the first row is entered. Tap Refresh.')
     st.stop()
 
-df_stats = get_stats_from_raw_data(snapshots, size, sort)
+df_stats = get_stats_from_raw_data(snapshots, size, sort, per_minute, min_minutes)
+if df_stats.empty and min_minutes:
+    st.info(f'No lineup played at least {min_minutes:02d}:00. Pick "All" under Min time.')
+    st.stop()
 if df_stats.empty:
     st.info('No lineup has played time yet. Tap Refresh after the next snapshot.')
     st.stop()
