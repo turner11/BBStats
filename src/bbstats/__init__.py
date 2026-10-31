@@ -219,7 +219,8 @@ def get_stats_from_raw_data(df, group_size, sort='top'):
         raise ValueError(f'Unknown sort {sort!r}, expected one of {list(SORTS)}')
     col, ascending = SORTS[sort]
     sum_cols = ['offense_diff', 'defence_diff', 'elapsed']
-    combinations_by_snapshot = df.players.apply(lambda lu: tuple(itertools.combinations(lu, group_size))).values
+    # sorted: the same players in another column order are one group
+    combinations_by_snapshot = df.players.apply(lambda lu: tuple(itertools.combinations(sorted(lu), group_size))).values
     played_groups = set(itertools.chain.from_iterable(combinations_by_snapshot))
 
     rows = []

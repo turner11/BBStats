@@ -115,6 +115,15 @@ def test_stats_needs_only_snapshot_columns():
     assert get_stats_from_raw_data(pd.DataFrame(columns=cols), 2).empty
 
 
+@pytest.mark.parametrize("size, groups", [(5, 1), (2, 10)])
+def test_stats_same_players_any_column_order_is_one_lineup(size, groups):
+    cols = ['players', 'elapsed', 'offense_diff', 'defence_diff']
+    df = pd.DataFrame([([1, 2, 3, 4, 5], 2.0, 4, 2), ([5, 1, 2, 3, 4], 1.0, 0, 3)], columns=cols)
+    out = get_stats_from_raw_data(df, size)
+    assert len(out) == groups
+    assert (out.elapsed == 3).all()
+
+
 def test_import_has_no_side_effects():
     code = "import bbstats, sys; assert 'streamlit' not in sys.modules"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
